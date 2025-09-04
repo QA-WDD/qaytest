@@ -9,23 +9,22 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import Link from "next/link";
 
 interface TestCasesPageProps {
-  searchParams: Promise<{ project?: string }>;
+  searchParams: Promise<{ project?: string; status?: string }>;
 }
+
+type Project = {
+  id: string;
+  name: string;
+};
 
 export default async function TestCasesPage({
   searchParams,
 }: TestCasesPageProps) {
-  const { project: selectedProjectId } = await searchParams;
+  const { project: selectedProjectId, status: filterStatus } =
+    await searchParams;
   const supabase = await createClient();
 
   const { data, error } = await supabase.auth.getUser();
@@ -47,14 +46,18 @@ export default async function TestCasesPage({
     )
     .eq("user_id", data.user.id);
 
-  const projects = userProjects?.map((up) => up.projects).filter(Boolean) || [];
+  const projects: Project[] =
+    userProjects
+      ?.map((up) => {
+        const proj = up.projects;
+        if (Array.isArray(proj)) {
+          return proj[0] as Project;
+        }
+        return proj as Project;
+      })
+      .filter((p): p is Project => !!p) || [];
 
-  // If no project selected, redirect to first available project
-  if (!selectedProjectId && projects.length > 0) {
-    redirect(`/test-cases?project=${projects[0].id}`);
-  }
-
-  if (!selectedProjectId) {
+  if (!selectedProjectId && projects.length === 0) {
     return (
       <div className="min-h-screen bg-background">
         <header className="border-b border-border bg-card">
@@ -81,8 +84,12 @@ export default async function TestCasesPage({
     );
   }
 
-  // Get test cases for selected project
-  const { data: testCases } = await supabase
+  if (!selectedProjectId && projects.length > 0) {
+    redirect(`/test-cases?project=${projects[0].id}`);
+  }
+
+  // Get test cases for selected project + status filter
+  let query = supabase
     .from("test_cases")
     .select(
       `
@@ -95,7 +102,12 @@ export default async function TestCasesPage({
     .eq("project_id", selectedProjectId)
     .order("created_at", { ascending: false });
 
-  // Get current project info
+  if (filterStatus && filterStatus !== "all") {
+    query = query.eq("status", filterStatus);
+  }
+
+  const { data: testCases } = await query;
+
   const currentProject = projects.find((p) => p.id === selectedProjectId);
 
   const getStatusColor = (status: string) => {
@@ -106,6 +118,8 @@ export default async function TestCasesPage({
         return "bg-yellow-100 text-yellow-800 border-yellow-200";
       case "deprecated":
         return "bg-red-100 text-red-800 border-red-200";
+      case "closed":
+        return "bg-gray-300 text-gray-800 border-gray-400";
       default:
         return "bg-gray-100 text-gray-800 border-gray-200";
     }
@@ -159,26 +173,76 @@ export default async function TestCasesPage({
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        {/* Project Selector (links to switch project) */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-card-foreground mb-2">
-            Proyecto:
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {projects.map((project) => (
+        {/* Project & Status Filters */}
+        <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          {/* Project Selector */}
+          <div>
+            <label className="block text-sm font-medium text-card-foreground mb-2">
+              Proyecto:
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {projects.map((project) => (
+                <Button
+                  key={project.id}
+                  asChild
+                  variant={
+                    project.id === selectedProjectId ? "default" : "outline"
+                  }
+                  className={
+                    project.id === selectedProjectId
+                      ? "bg-primary text-primary-foreground"
+                      : "border-border"
+                  }
+                >
+                  <Link href={`/test-cases?project=${project.id}`}>
+                    {project.name}
+                  </Link>
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Estado Filtro */}
+          <div>
+            <label className="block text-sm font-medium text-card-foreground mb-2">
+              Filtrar por estado:
+            </label>
+            <div className="flex flex-wrap gap-2">
               <Button
-                key={project.id}
                 asChild
-                variant={project.id === selectedProjectId ? "default" : "outline"}
-                className={
-                  project.id === selectedProjectId
-                    ? "bg-primary text-primary-foreground"
-                    : "border-border"
+                variant={
+                  filterStatus === "all" || !filterStatus
+                    ? "default"
+                    : "outline"
                 }
               >
-                <Link href={`/test-cases?project=${project.id}`}>{project.name}</Link>
+                <Link
+                  href={`/test-cases?project=${selectedProjectId}&status=all`}
+                >
+                  Todos
+                </Link>
               </Button>
-            ))}
+              <Button
+                asChild
+                variant={filterStatus === "active" ? "default" : "outline"}
+              >
+                <Link
+                  href={`/test-cases?project=${selectedProjectId}&status=active`}
+                >
+                  Activos
+                </Link>
+              </Button>
+              <Button
+                asChild
+                variant={filterStatus === "closed" ? "default" : "outline"}
+              >
+                <Link
+                  href={`/test-cases?project=${selectedProjectId}&status=closed`}
+                >
+                  Cerrados
+                </Link>
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -201,7 +265,9 @@ export default async function TestCasesPage({
                           ? "Activo"
                           : testCase.status === "draft"
                           ? "Borrador"
-                          : "Obsoleto"}
+                          : testCase.status === "deprecated"
+                          ? "Obsoleto"
+                          : "Cerrado"}
                       </Badge>
                       <Badge className={getPriorityColor(testCase.priority)}>
                         {testCase.priority === "critical"

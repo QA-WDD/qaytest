@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -8,8 +7,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 interface TestCasePageProps {
   params: Promise<{ id: string }>;
@@ -19,12 +19,13 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
   const { id } = await params;
   const supabase = await createClient();
 
+  // Auth
   const { data, error } = await supabase.auth.getUser();
   if (error || !data?.user) {
     redirect("/auth/login");
   }
 
-  // Get test case details
+  // Test case
   const { data: testCase } = await supabase
     .from("test_cases")
     .select(
@@ -47,7 +48,7 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
     redirect("/test-cases");
   }
 
-  // Check if user has access to this project
+  // Check membership
   const { data: projectMember } = await supabase
     .from("project_members")
     .select("role")
@@ -59,7 +60,7 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
     redirect("/test-cases");
   }
 
-  // Get recent executions
+  // Recent executions
   const { data: executions } = await supabase
     .from("test_executions")
     .select(
@@ -74,7 +75,7 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
     .order("execution_date", { ascending: false })
     .limit(5);
 
-  // Get test case history
+  // History
   const { data: history } = await supabase
     .from("test_case_history")
     .select(
@@ -88,6 +89,38 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
     .eq("test_case_id", id)
     .order("changed_at", { ascending: false })
     .limit(10);
+
+  // Helpers
+  const safeParseSteps = (raw: any): { action: string; expected: string }[] => {
+    if (!raw) return [];
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    if (Array.isArray(raw)) return raw;
+    return [];
+  };
+
+  const safeParseStepsStatus = (raw: any): any[] => {
+    if (!raw) return [];
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    if (Array.isArray(raw)) return raw;
+    return [];
+  };
+
+  const stepsArray = safeParseSteps(testCase.steps);
+  const latestStepsStatus = safeParseStepsStatus(executions?.[0]?.steps_status);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -185,11 +218,11 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
 
       <main className="container mx-auto px-4 py-8">
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* Test Case Details */}
+          {/* Test Case Details (main column) */}
           <div className="lg:col-span-2 space-y-6">
             <Card className="border-border">
               <CardHeader>
-                <div className="flex justify-between items-start">
+                <div className="flex justify-between items-start w-full">
                   <CardTitle className="text-card-foreground">
                     Detalles del Caso de Prueba
                   </CardTitle>
@@ -199,7 +232,7 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
                         ? "Activo"
                         : testCase.status === "draft"
                         ? "Borrador"
-                        : "Obsoleto"}
+                        : "Cerrado"}
                     </Badge>
                     <Badge className={getPriorityColor(testCase.priority)}>
                       {testCase.priority === "critical"
@@ -213,7 +246,46 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
                   </div>
                 </div>
               </CardHeader>
+
               <CardContent className="space-y-6">
+                {/* Read-only fields */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium">
+                      Número de Test Case
+                    </label>
+                    <input
+                      type="text"
+                      value={testCase.case_number ?? ""}
+                      readOnly
+                      className="border rounded p-2 w-full bg-gray-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium">
+                      Historia Asociada
+                    </label>
+                    <input
+                      type="text"
+                      value={testCase.story_id ?? ""}
+                      readOnly
+                      className="border rounded p-2 w-full bg-gray-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium">Título</label>
+                    <input
+                      type="text"
+                      value={testCase.title ?? ""}
+                      readOnly
+                      className="border rounded p-2 w-full bg-gray-100"
+                    />
+                  </div>
+                </div>
+
+                {/* Description */}
                 {testCase.description && (
                   <div>
                     <h4 className="font-medium text-card-foreground mb-2">
@@ -225,6 +297,7 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
                   </div>
                 )}
 
+                {/* Preconditions */}
                 {testCase.preconditions && (
                   <div>
                     <h4 className="font-medium text-card-foreground mb-2">
@@ -236,25 +309,90 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
                   </div>
                 )}
 
+                {/* Steps (with disabled checkboxes reflecting latest execution) */}
                 <div>
                   <h4 className="font-medium text-card-foreground mb-2">
                     Pasos a Seguir
                   </h4>
-                  <p className="text-muted-foreground whitespace-pre-wrap">
-                    {testCase.steps}
-                  </p>
+                  {stepsArray.length > 0 ? (
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted">
+                          <tr>
+                            <th className="px-4 py-2 text-left">#</th>
+                            <th className="px-4 py-2 text-left">Acción</th>
+                            <th className="px-4 py-2 text-left">
+                              Resultado Esperado
+                            </th>
+                            <th className="px-4 py-2 text-center">
+                              Completado
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {stepsArray.map((step: any, index: number) => {
+                            const checked = Boolean(
+                              latestStepsStatus?.[index]?.completed
+                            );
+                            return (
+                              <tr key={index} className="border-t">
+                                <td className="px-4 py-2">{index + 1}.</td>
+                                <td className="px-4 py-2">{step.action}</td>
+                                <td className="px-4 py-2">{step.expected}</td>
+                                <td className="px-4 py-2 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    disabled
+                                    className="h-4 w-4 text-primary border-gray-300 rounded"
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">
+                      No hay pasos registrados
+                    </p>
+                  )}
                 </div>
 
+                {/* Expected result */}
+                {/* Expected result */}
                 <div>
                   <h4 className="font-medium text-card-foreground mb-2">
                     Resultado Esperado
                   </h4>
-                  <p className="text-muted-foreground whitespace-pre-wrap">
+                  <p className="text-muted-foreground whitespace-pre-wrap mb-2">
                     {testCase.expected_result}
                   </p>
+
+                  {stepsArray.length > 0 &&
+                    (() => {
+                      const totalSteps = stepsArray.length;
+                      const completedSteps = latestStepsStatus.filter(
+                        (s: any) => s?.completed
+                      ).length;
+                      const percentage =
+                        totalSteps > 0
+                          ? Math.round((completedSteps / totalSteps) * 100)
+                          : 0;
+
+                      return (
+                        <p className="text-sm text-card-foreground font-medium">
+                          Ejecución alcanzada:{" "}
+                          <span className="text-primary">{percentage}%</span> (
+                          {completedSteps}/{totalSteps} pasos completados)
+                        </p>
+                      );
+                    })()}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 text-sm pt-4 border-t border-border">
+                {/* Meta: creado por / fecha */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm pt-4 border-t border-border">
                   <div>
                     <span className="font-medium text-card-foreground">
                       Creado por:
@@ -290,7 +428,7 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
               <CardContent>
                 {executions && executions.length > 0 ? (
                   <div className="space-y-3">
-                    {executions.map((execution) => (
+                    {executions.map((execution: any) => (
                       <div
                         key={execution.id}
                         className="flex items-center justify-between p-3 border border-border rounded-lg"
@@ -345,7 +483,7 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
               <CardContent>
                 {history && history.length > 0 ? (
                   <div className="space-y-3">
-                    {history.map((change) => (
+                    {history.map((change: any) => (
                       <div
                         key={change.id}
                         className="text-sm border-l-2 border-primary pl-3"
@@ -353,25 +491,25 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
                         <p className="font-medium text-card-foreground">
                           {change.field_name}
                         </p>
-                        <p className="text-muted-foreground text-xs">
+                        <p className="text-xs text-muted-foreground">
                           por {change.users?.full_name || "Desconocido"}
                         </p>
-                        <p className="text-muted-foreground text-xs">
+                        <p className="text-xs text-muted-foreground">
                           {new Date(change.changed_at).toLocaleString("es-ES")}
                         </p>
                         {change.old_value && (
                           <p className="text-xs text-red-600 mt-1">
                             Anterior:{" "}
-                            {change.old_value.length > 50
-                              ? `${change.old_value.substring(0, 50)}...`
+                            {change.old_value.length > 80
+                              ? `${change.old_value.substring(0, 80)}...`
                               : change.old_value}
                           </p>
                         )}
                         {change.new_value && (
                           <p className="text-xs text-green-600">
                             Nuevo:{" "}
-                            {change.new_value.length > 50
-                              ? `${change.new_value.substring(0, 50)}...`
+                            {change.new_value.length > 80
+                              ? `${change.new_value.substring(0, 80)}...`
                               : change.new_value}
                           </p>
                         )}

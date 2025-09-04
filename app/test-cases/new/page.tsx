@@ -1,81 +1,125 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
-import { useState, useEffect } from "react"
+type Step = { action: string; expected: string };
+type Project = { id: string; name: string };
 
 export default function NewTestCasePage() {
-  const [title, setTitle] = useState("")
-  const [description, setDescription] = useState("")
-  const [preconditions, setPreconditions] = useState("")
-  const [steps, setSteps] = useState("")
-  const [expectedResult, setExpectedResult] = useState("")
-  const [status, setStatus] = useState("draft")
-  const [priority, setPriority] = useState("medium")
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [projects, setProjects] = useState<any[]>([])
-  const [selectedProject, setSelectedProject] = useState("")
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [preconditions, setPreconditions] = useState("");
+  const [steps, setSteps] = useState<Step[]>([{ action: "", expected: "" }]);
+  const [status, setStatus] = useState("draft");
+  const [priority, setPriority] = useState("medium");
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const projectFromUrl = searchParams.get("project")
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState("");
+
+  // Nuevo: story_id y case_number
+  const [storyId, setStoryId] = useState<number | null>(null);
+  const [caseNumber, setCaseNumber] = useState<number | null>(null);
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const projectFromUrl = searchParams.get("project");
 
   useEffect(() => {
     const loadProjects = async () => {
-      const supabase = createClient()
+      const supabase = createClient();
       const {
         data: { user },
-      } = await supabase.auth.getUser()
+      } = await supabase.auth.getUser();
 
       if (user) {
         const { data: userProjects } = await supabase
           .from("project_members")
-          .select(`
+          .select(
+            `
             project_id,
             projects (
               id,
               name
             )
-          `)
-          .eq("user_id", user.id)
+          `
+          )
+          .eq("user_id", user.id);
 
-        const projectsList = userProjects?.map((up) => up.projects).filter(Boolean) || []
-        setProjects(projectsList)
+        const projectsList: Project[] =
+          userProjects
+            ?.map((up) => {
+              const proj = up.projects as Project | Project[];
+              return Array.isArray(proj) ? proj[0] : proj;
+            })
+            .filter((p): p is Project => !!p) || [];
 
-        if (projectFromUrl && projectsList.find((p) => p.id === projectFromUrl)) {
-          setSelectedProject(projectFromUrl)
+        setProjects(projectsList);
+
+        if (
+          projectFromUrl &&
+          projectsList.find((p) => p.id === projectFromUrl)
+        ) {
+          setSelectedProject(projectFromUrl);
         } else if (projectsList.length > 0) {
-          setSelectedProject(projectsList[0].id)
+          setSelectedProject(projectsList[0].id);
         }
       }
-    }
+    };
 
-    loadProjects()
-  }, [projectFromUrl])
+    loadProjects();
+  }, [projectFromUrl]);
+
+  const addStep = () => {
+    setSteps([...steps, { action: "", expected: "" }]);
+  };
+
+  const updateStep = (
+    index: number,
+    field: "action" | "expected",
+    value: string
+  ) => {
+    const newSteps = [...steps];
+    newSteps[index][field] = value;
+    setSteps(newSteps);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const supabase = createClient()
-    setIsLoading(true)
-    setError(null)
+    e.preventDefault();
+    const supabase = createClient();
+    setIsLoading(true);
+    setError(null);
 
     try {
       const {
         data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) throw new Error("Usuario no autenticado")
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
 
-      if (!selectedProject) throw new Error("Debe seleccionar un proyecto")
+      if (!selectedProject) throw new Error("Debe seleccionar un proyecto");
 
       const { data: testCase, error: testCaseError } = await supabase
         .from("test_cases")
@@ -84,55 +128,83 @@ export default function NewTestCasePage() {
           title,
           description,
           preconditions,
-          steps,
-          expected_result: expectedResult,
+          steps: JSON.stringify(steps),
           status,
           priority,
+          story_id: storyId, // nuevo
           created_by: user.id,
         })
         .select()
-        .single()
+        .single();
 
-      if (testCaseError) throw testCaseError
+      if (testCaseError) throw testCaseError;
 
-      router.push(`/test-cases/${testCase.id}`)
+      // Guardamos el case_number generado en la DB
+      setCaseNumber(testCase.case_number);
+
+      router.push(`/test-cases/${testCase.id}`);
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "Error al crear el caso de prueba")
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Error al crear el caso de prueba"
+      );
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-card-foreground">Crear Caso de Prueba</h1>
-            <p className="text-sm text-muted-foreground">Crea un nuevo caso de prueba</p>
+            <h1 className="text-2xl font-bold text-card-foreground">
+              Crear Caso de Prueba
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Crea un nuevo caso de prueba
+            </p>
           </div>
-          <Button asChild variant="outline" className="border-border bg-transparent">
-            <Link href={`/test-cases${selectedProject ? `?project=${selectedProject}` : ""}`}>Cancelar</Link>
+          <Button
+            asChild
+            variant="outline"
+            className="border-border bg-transparent"
+          >
+            <Link
+              href={`/test-cases${
+                selectedProject ? `?project=${selectedProject}` : ""
+              }`}
+            >
+              Cancelar
+            </Link>
           </Button>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-4xl">
+      <main className="container mx-auto px-4 py-8 max-w-5xl">
         <Card className="border-border">
           <CardHeader>
-            <CardTitle className="text-card-foreground">Información del Caso de Prueba</CardTitle>
+            <CardTitle className="text-card-foreground">
+              Información del Caso de Prueba
+            </CardTitle>
             <CardDescription className="text-muted-foreground">
               Completa los datos para crear un nuevo caso de prueba
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Formulario principal */}
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Proyecto y prioridad */}
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="project" className="text-card-foreground">
                     Proyecto *
                   </Label>
-                  <Select value={selectedProject} onValueChange={setSelectedProject}>
+                  <Select
+                    value={selectedProject}
+                    onValueChange={setSelectedProject}
+                  >
                     <SelectTrigger className="bg-input border-border text-foreground">
                       <SelectValue placeholder="Selecciona un proyecto" />
                     </SelectTrigger>
@@ -164,21 +236,54 @@ export default function NewTestCasePage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="title" className="text-card-foreground">
-                  Título *
-                </Label>
-                <Input
-                  id="title"
-                  type="text"
-                  placeholder="Ej: Verificar login con credenciales válidas"
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="bg-input border-border text-foreground"
-                />
+              <div className="grid grid-cols-3 gap-4">
+                {/* Número de Test Case */}
+                <div>
+                  <Label
+                    htmlFor="número de Test Case"
+                    className="text-card-foreground"
+                  >
+                    Número de Test Case
+                  </Label>
+                  <input
+                    type="text"
+                    value={caseNumber || "Se generará automáticamente"}
+                    readOnly
+                    className="border rounded p-2 w-full bg-gray-100"
+                  />
+                </div>
+
+                {/* Número de historia */}
+                <div>
+                  <Label
+                    htmlFor="historia asociada"
+                    className="text-card-foreground"
+                  >
+                    Historia asociada
+                  </Label>
+                  <input
+                    type="number"
+                    value={storyId ?? ""}
+                    onChange={(e) => setStoryId(Number(e.target.value))}
+                    className=" bg-input border rounded p-2 w-full"
+                  />
+                </div>
+
+                {/* Título */}
+                <div>
+                  <Label htmlFor="título" className="text-card-foreground">
+                    Título
+                  </Label>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="bg-input border rounded p-2 w-full"
+                  />
+                </div>
               </div>
 
+              {/* Descripción */}
               <div className="space-y-2">
                 <Label htmlFor="description" className="text-card-foreground">
                   Descripción
@@ -192,6 +297,7 @@ export default function NewTestCasePage() {
                 />
               </div>
 
+              {/* Precondiciones */}
               <div className="space-y-2">
                 <Label htmlFor="preconditions" className="text-card-foreground">
                   Precondiciones
@@ -205,34 +311,62 @@ export default function NewTestCasePage() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="steps" className="text-card-foreground">
-                  Pasos a Seguir *
-                </Label>
-                <Textarea
-                  id="steps"
-                  placeholder="1. Abrir la página de login&#10;2. Ingresar email válido&#10;3. Ingresar contraseña válida&#10;4. Hacer clic en 'Iniciar Sesión'"
-                  required
-                  value={steps}
-                  onChange={(e) => setSteps(e.target.value)}
-                  className="bg-input border-border text-foreground min-h-[120px]"
-                />
+              {/* Pasos */}
+              <div>
+                <h4 className="font-medium text-card-foreground mb-2">
+                  Pasos y Resultados *
+                </h4>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="px-4 py-2 text-left">#</th>
+                        <th className="px-4 py-2 text-left">Acción</th>
+                        <th className="px-4 py-2 text-left">
+                          Resultado Esperado
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {steps.map((step, index) => (
+                        <tr key={index} className="border-t">
+                          <td className="px-4 py-2">{index + 1}.</td>
+                          <td className="px-4 py-2">
+                            <Textarea
+                              value={step.action}
+                              onChange={(e) =>
+                                updateStep(index, "action", e.target.value)
+                              }
+                              placeholder="Escribe la acción..."
+                              className="w-full bg-input border-border"
+                            />
+                          </td>
+                          <td className="px-4 py-2">
+                            <Textarea
+                              value={step.expected}
+                              onChange={(e) =>
+                                updateStep(index, "expected", e.target.value)
+                              }
+                              placeholder="Escribe el resultado esperado..."
+                              className="w-full bg-input border-border"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <Button
+                  onClick={addStep}
+                  type="button"
+                  variant="outline"
+                  className="mt-3"
+                >
+                  + Añadir Paso
+                </Button>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="expectedResult" className="text-card-foreground">
-                  Resultado Esperado *
-                </Label>
-                <Textarea
-                  id="expectedResult"
-                  placeholder="El usuario debe ser redirigido al dashboard principal..."
-                  required
-                  value={expectedResult}
-                  onChange={(e) => setExpectedResult(e.target.value)}
-                  className="bg-input border-border text-foreground min-h-[80px]"
-                />
-              </div>
-
+              {/* Estado */}
               <div className="space-y-2">
                 <Label htmlFor="status" className="text-card-foreground">
                   Estado
@@ -258,8 +392,18 @@ export default function NewTestCasePage() {
                 >
                   {isLoading ? "Creando..." : "Crear Caso de Prueba"}
                 </Button>
-                <Button asChild variant="outline" className="flex-1 border-border bg-transparent">
-                  <Link href={`/test-cases${selectedProject ? `?project=${selectedProject}` : ""}`}>Cancelar</Link>
+                <Button
+                  asChild
+                  variant="outline"
+                  className="flex-1 border-border bg-transparent"
+                >
+                  <Link
+                    href={`/test-cases${
+                      selectedProject ? `?project=${selectedProject}` : ""
+                    }`}
+                  >
+                    Cancelar
+                  </Link>
                 </Button>
               </div>
             </form>
@@ -267,5 +411,5 @@ export default function NewTestCasePage() {
         </Card>
       </main>
     </div>
-  )
+  );
 }
