@@ -76,19 +76,29 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
     .limit(5);
 
   // History
-  const { data: history } = await supabase
+  // History
+  const { data: history, error: historyError } = await supabase
     .from("test_case_history")
     .select(
       `
-      *,
-      users!test_case_history_changed_by_fkey (
-        full_name
-      )
-    `
+    id,
+    field_name,
+    old_value,
+    new_value,
+    changed_at,
+    users!test_case_history_changed_by_fkey (
+      id,
+      full_name
+    )
+  `
     )
     .eq("test_case_id", id)
     .order("changed_at", { ascending: false })
     .limit(10);
+
+  if (historyError) {
+    console.error("Error fetching history:", historyError);
+  }
 
   // Helpers
   const safeParseSteps = (raw: any): { action: string; expected: string }[] => {
@@ -211,6 +221,13 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
               className="bg-accent text-accent-foreground hover:bg-accent/90"
             >
               <Link href={`/test-cases/${id}/execute`}>Ejecutar Caso</Link>
+            </Button>
+            <Button
+              asChild
+              /*     variant="secondary" */
+              className="bg-accent text-accent-foreground hover:bg-accent/90"
+            >
+              <Link href={`/test-cases/${id}/edit`}>Editar Caso</Link>
             </Button>
           </div>
         </div>
@@ -482,40 +499,69 @@ export default async function TestCasePage({ params }: TestCasePageProps) {
               </CardHeader>
               <CardContent>
                 {history && history.length > 0 ? (
-                  <div className="space-y-3">
-                    {history.map((change: any) => (
-                      <div
-                        key={change.id}
-                        className="text-sm border-l-2 border-primary pl-3"
-                      >
-                        <p className="font-medium text-card-foreground">
-                          {change.field_name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          por {change.users?.full_name || "Desconocido"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(change.changed_at).toLocaleString("es-ES")}
-                        </p>
-                        {change.old_value && (
-                          <p className="text-xs text-red-600 mt-1">
-                            Anterior:{" "}
-                            {change.old_value.length > 80
-                              ? `${change.old_value.substring(0, 80)}...`
-                              : change.old_value}
-                          </p>
-                        )}
-                        {change.new_value && (
-                          <p className="text-xs text-green-600">
-                            Nuevo:{" "}
-                            {change.new_value.length > 80
-                              ? `${change.new_value.substring(0, 80)}...`
-                              : change.new_value}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  history.map((change: any) => (
+                    <div
+                      key={change.id}
+                      className="text-sm border-l-2 border-primary pl-3"
+                    >
+                      <p className="font-medium text-card-foreground">
+                        {change.field_name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        por {change.users?.full_name ?? "Desconocido"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(change.changed_at).toLocaleString("es-ES")}
+                      </p>
+
+                      {/* Formateo especial para steps */}
+                      {change.field_name === "steps" ? (
+                        <div className="text-xs mt-1">
+                          <p className="text-red-600">Anterior:</p>
+                          <ul className="list-disc pl-5 text-red-600">
+                            {JSON.parse(change.old_value || "[]").map(
+                              (step: any, index: number) => (
+                                <li key={index}>
+                                  Acción: {step.action}, Esperado:{" "}
+                                  {step.expected}
+                                </li>
+                              )
+                            )}
+                          </ul>
+                          <p className="text-green-600">Nuevo:</p>
+                          <ul className="list-disc pl-5 text-green-600">
+                            {JSON.parse(change.new_value || "[]").map(
+                              (step: any, index: number) => (
+                                <li key={index}>
+                                  Acción: {step.action}, Esperado:{" "}
+                                  {step.expected}
+                                </li>
+                              )
+                            )}
+                          </ul>
+                        </div>
+                      ) : (
+                        <>
+                          {change.old_value && (
+                            <p className="text-xs text-red-600 mt-1">
+                              Anterior:{" "}
+                              {change.old_value.length > 80
+                                ? `${change.old_value.substring(0, 80)}...`
+                                : change.old_value}
+                            </p>
+                          )}
+                          {change.new_value && (
+                            <p className="text-xs text-green-600">
+                              Nuevo:{" "}
+                              {change.new_value.length > 80
+                                ? `${change.new_value.substring(0, 80)}...`
+                                : change.new_value}
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ))
                 ) : (
                   <p className="text-muted-foreground text-center py-4">
                     Sin cambios registrados

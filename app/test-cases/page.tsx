@@ -15,11 +15,6 @@ interface TestCasesPageProps {
   searchParams: Promise<{ project?: string; status?: string }>;
 }
 
-type Project = {
-  id: string;
-  name: string;
-};
-
 export default async function TestCasesPage({
   searchParams,
 }: TestCasesPageProps) {
@@ -278,6 +273,9 @@ export default async function TestCasesPage({
                           ? "Media"
                           : "Baja"}
                       </Badge>
+                      <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200">
+                        Test Case # {testCase.case_number}
+                      </Badge>
                     </div>
                   </div>
                   <CardDescription className="text-muted-foreground">
@@ -288,6 +286,7 @@ export default async function TestCasesPage({
                       : "Sin descripción"}
                   </CardDescription>
                 </CardHeader>
+
                 <CardContent>
                   <div className="space-y-3">
                     <div className="text-sm">

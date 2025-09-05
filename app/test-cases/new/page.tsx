@@ -34,13 +34,14 @@ export default function NewTestCasePage() {
   const [steps, setSteps] = useState<Step[]>([{ action: "", expected: "" }]);
   const [status, setStatus] = useState("draft");
   const [priority, setPriority] = useState("medium");
+  const [month, setMonth] = useState(""); 
+  const [sprint, setSprint] = useState(""); 
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState("");
 
-  // Nuevo: story_id y case_number
   const [storyId, setStoryId] = useState<number | null>(null);
   const [caseNumber, setCaseNumber] = useState<number | null>(null);
 
@@ -131,7 +132,9 @@ export default function NewTestCasePage() {
           steps: JSON.stringify(steps),
           status,
           priority,
-          story_id: storyId, // nuevo
+          month, // 👈 nuevo campo
+          sprint, // 👈 nuevo campo
+          story_id: storyId,
           created_by: user.id,
         })
         .select()
@@ -139,7 +142,6 @@ export default function NewTestCasePage() {
 
       if (testCaseError) throw testCaseError;
 
-      // Guardamos el case_number generado en la DB
       setCaseNumber(testCase.case_number);
 
       router.push(`/test-cases/${testCase.id}`);
@@ -193,10 +195,10 @@ export default function NewTestCasePage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {/* Formulario principal */}
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Proyecto y prioridad */}
-              <div className="grid gap-6 md:grid-cols-2">
+              {/* Proyecto, Prioridad, Mes y Sprint */}
+              <div className="grid gap-6 md:grid-cols-4">
+                {/* Proyecto */}
                 <div className="space-y-2">
                   <Label htmlFor="project" className="text-card-foreground">
                     Proyecto *
@@ -218,6 +220,7 @@ export default function NewTestCasePage() {
                   </Select>
                 </div>
 
+                {/* Prioridad */}
                 <div className="space-y-2">
                   <Label htmlFor="priority" className="text-card-foreground">
                     Prioridad
@@ -234,11 +237,52 @@ export default function NewTestCasePage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Mes */}
+                <div className="space-y-2">
+                  <Label htmlFor="month" className="text-card-foreground">
+                    Mes
+                  </Label>
+                  <Select value={month} onValueChange={setMonth}>
+                    <SelectTrigger className="bg-input border-border text-foreground">
+                      <SelectValue placeholder="Selecciona un mes" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="enero">Enero</SelectItem>
+                      <SelectItem value="febrero">Febrero</SelectItem>
+                      <SelectItem value="marzo">Marzo</SelectItem>
+                      <SelectItem value="abril">Abril</SelectItem>
+                      <SelectItem value="mayo">Mayo</SelectItem>
+                      <SelectItem value="junio">Junio</SelectItem>
+                      <SelectItem value="julio">Julio</SelectItem>
+                      <SelectItem value="agosto">Agosto</SelectItem>
+                      <SelectItem value="septiembre">Septiembre</SelectItem>
+                      <SelectItem value="octubre">Octubre</SelectItem>
+                      <SelectItem value="noviembre">Noviembre</SelectItem>
+                      <SelectItem value="diciembre">Diciembre</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Sprint */}
+                <div className="space-y-2">
+                  <Label htmlFor="sprint" className="text-card-foreground">
+                    Sprint
+                  </Label>
+                  <Select value={sprint} onValueChange={setSprint}>
+                    <SelectTrigger className="bg-input border-border text-foreground">
+                      <SelectValue placeholder="Selecciona un sprint" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="S1">S1</SelectItem>
+                      <SelectItem value="S2">S2</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                {/* Número de Test Case */}
-                <div>
+              <div className="grid grid-cols-2 gap-4">
+                {/*             <div>
                   <Label
                     htmlFor="número de Test Case"
                     className="text-card-foreground"
@@ -251,7 +295,7 @@ export default function NewTestCasePage() {
                     readOnly
                     className="border rounded p-2 w-full bg-gray-100"
                   />
-                </div>
+                </div> */}
 
                 {/* Número de historia */}
                 <div>
