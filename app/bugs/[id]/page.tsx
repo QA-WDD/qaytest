@@ -1,29 +1,36 @@
-import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import Link from "next/link"
-import { BugCommentsSection } from "@/components/bug-comments-section"
-import { BugStatusUpdate } from "@/components/bug-status-update"
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { BugCommentsSection } from "@/components/bug-comments-section";
+import { BugStatusUpdate } from "@/components/bug-status-update";
 
 interface BugPageProps {
-  params: Promise<{ id: string }>
+  params: Promise<{ id: string }>;
 }
 
 export default async function BugPage({ params }: BugPageProps) {
-  const { id } = await params
-  const supabase = await createClient()
+  const { id } = await params;
+  const supabase = await createClient();
 
-  const { data, error } = await supabase.auth.getUser()
+  const { data, error } = await supabase.auth.getUser();
   if (error || !data?.user) {
-    redirect("/auth/login")
+    redirect("/auth/login");
   }
 
   // Get bug details
   const { data: bug } = await supabase
     .from("bugs")
-    .select(`
+    .select(
+      `
       *,
       users!bugs_reported_by_fkey (
         full_name,
@@ -41,12 +48,13 @@ export default async function BugPage({ params }: BugPageProps) {
         id,
         title
       )
-    `)
+    `
+    )
     .eq("id", id)
-    .single()
+    .single();
 
   if (!bug) {
-    redirect("/bugs")
+    redirect("/bugs");
   }
 
   // Check if user has access to this project
@@ -55,149 +63,171 @@ export default async function BugPage({ params }: BugPageProps) {
     .select("role")
     .eq("project_id", bug.project_id)
     .eq("user_id", data.user.id)
-    .single()
+    .single();
 
   if (!projectMember) {
-    redirect("/bugs")
+    redirect("/bugs");
   }
 
   // Get bug comments
   const { data: comments } = await supabase
     .from("bug_comments")
-    .select(`
+    .select(
+      `
       *,
       users!bug_comments_created_by_fkey (
         full_name
       )
-    `)
+    `
+    )
     .eq("bug_id", id)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: true });
 
   // Get bug history
   const { data: history } = await supabase
     .from("bug_history")
-    .select(`
+    .select(
+      `
       *,
       users!bug_history_changed_by_fkey (
         full_name
       )
-    `)
+    `
+    )
     .eq("bug_id", id)
     .order("changed_at", { ascending: false })
-    .limit(10)
+    .limit(10);
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case "open":
-        return "bg-red-100 text-red-800 border-red-200"
+        return "bg-red-100 text-red-800 border-red-200";
       case "in_progress":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200"
+        return "bg-yellow-100 text-yellow-800 border-yellow-200";
       case "resolved":
-        return "bg-green-100 text-green-800 border-green-200"
+        return "bg-green-100 text-green-800 border-green-200";
       case "closed":
-        return "bg-gray-100 text-gray-800 border-gray-200"
+        return "bg-gray-100 text-gray-800 border-gray-200";
       case "reopened":
-        return "bg-orange-100 text-orange-800 border-orange-200"
+        return "bg-orange-100 text-orange-800 border-orange-200";
       default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
+        return "bg-gray-100 text-gray-800 border-gray-200";
     }
-  }
+  };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "critical":
-        return "bg-red-100 text-red-800 border-red-200"
+        return "bg-red-100 text-red-800 border-red-200";
       case "high":
-        return "bg-orange-100 text-orange-800 border-orange-200"
+        return "bg-orange-100 text-orange-800 border-orange-200";
       case "medium":
-        return "bg-blue-100 text-blue-800 border-blue-200"
+        return "bg-blue-100 text-blue-800 border-blue-200";
       case "low":
-        return "bg-gray-100 text-gray-800 border-gray-200"
+        return "bg-gray-100 text-gray-800 border-gray-200";
       default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
+        return "bg-gray-100 text-gray-800 border-gray-200";
     }
-  }
+  };
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case "blocker":
-        return "bg-red-100 text-red-800 border-red-200"
+        return "bg-red-100 text-red-800 border-red-200";
       case "critical":
-        return "bg-orange-100 text-orange-800 border-orange-200"
+        return "bg-orange-100 text-orange-800 border-orange-200";
       case "major":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200"
+        return "bg-yellow-100 text-yellow-800 border-yellow-200";
       case "minor":
-        return "bg-blue-100 text-blue-800 border-blue-200"
+        return "bg-blue-100 text-blue-800 border-blue-200";
       default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
+        return "bg-gray-100 text-gray-800 border-gray-200";
     }
-  }
+  };
 
   const getStatusText = (status: string) => {
     switch (status) {
       case "open":
-        return "Abierto"
+        return "Abierto";
       case "in_progress":
-        return "En Progreso"
+        return "En Progreso";
       case "resolved":
-        return "Resuelto"
+        return "Resuelto";
       case "closed":
-        return "Cerrado"
+        return "Cerrado";
       case "reopened":
-        return "Reabierto"
+        return "Reabierto";
       default:
-        return status
+        return status;
     }
-  }
+  };
 
   const getPriorityText = (priority: string) => {
     switch (priority) {
       case "critical":
-        return "Crítica"
+        return "Crítica";
       case "high":
-        return "Alta"
+        return "Alta";
       case "medium":
-        return "Media"
+        return "Media";
       case "low":
-        return "Baja"
+        return "Baja";
       default:
-        return priority
+        return priority;
     }
-  }
+  };
 
   const getSeverityText = (severity: string) => {
     switch (severity) {
       case "blocker":
-        return "Bloqueante"
+        return "Bloqueante";
       case "critical":
-        return "Crítica"
+        return "Crítica";
       case "major":
-        return "Mayor"
+        return "Mayor";
       case "minor":
-        return "Menor"
+        return "Menor";
       default:
-        return severity
+        return severity;
     }
-  }
+  };
 
   const canManageBug =
-    projectMember.role === "admin" || projectMember.role === "lead" || bug.assigned_to === data.user.id
+    projectMember.role === "admin" ||
+    projectMember.role === "lead" ||
+    bug.assigned_to === data.user.id;
 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-card-foreground">{bug.title}</h1>
-            <p className="text-sm text-muted-foreground">{bug.projects?.name}</p>
+            <h1 className="text-2xl font-bold text-card-foreground">
+              {bug.title}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {bug.projects?.name}
+            </p>
           </div>
           <div className="flex items-center gap-4">
-            <Button asChild variant="outline" className="border-border bg-transparent">
-              <Link href={`/bugs?project=${bug.project_id}`}>Volver a Bugs</Link>
+            <Button
+              asChild
+              variant="outline"
+              className="border-border bg-transparent"
+            >
+              <Link href={`/bugs?project=${bug.project_id}`}>
+                Volver a Bugs
+              </Link>
             </Button>
             {bug.test_cases && (
-              <Button asChild variant="outline" className="border-border bg-transparent">
-                <Link href={`/test-cases/${bug.test_cases.id}`}>Ver Caso de Prueba</Link>
+              <Button
+                asChild
+                variant="outline"
+                className="border-border bg-transparent"
+              >
+                <Link href={`/test-cases/${bug.test_cases.id}`}>
+                  Ver Caso de Prueba
+                </Link>
               </Button>
             )}
           </div>
@@ -211,21 +241,38 @@ export default async function BugPage({ params }: BugPageProps) {
             <Card className="border-border">
               <CardHeader>
                 <div className="flex justify-between items-start">
-                  <CardTitle className="text-card-foreground">Detalles del Bug</CardTitle>
+                  <CardTitle className="text-card-foreground">
+                    Detalles del Bug
+                  </CardTitle>
                   <div className="flex gap-2">
-                    <Badge className={getStatusColor(bug.status)}>{getStatusText(bug.status)}</Badge>
-                    <Badge className={getPriorityColor(bug.priority)}>{getPriorityText(bug.priority)}</Badge>
-                    <Badge className={getSeverityColor(bug.severity)}>{getSeverityText(bug.severity)}</Badge>
+                    <Badge className={getStatusColor(bug.status)}>
+                      {getStatusText(bug.status)}
+                    </Badge>
+                    <Badge className={getPriorityColor(bug.priority)}>
+                      {getPriorityText(bug.priority)}
+                    </Badge>
+                    <Badge className={getSeverityColor(bug.severity)}>
+                      {getSeverityText(bug.severity)}
+                    </Badge>
+                    {bug.bug_number && (
+                      <Badge className="bg-purple-100 text-purple-800 border-purple-200">
+                         BUG - {bug.bug_number}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div>
-                  <h4 className="font-medium text-card-foreground mb-2">Descripción</h4>
-                  <p className="text-muted-foreground whitespace-pre-wrap">{bug.description}</p>
+                  <h4 className="font-medium text-card-foreground mb-2">
+                    Descripción
+                  </h4>
+                  <p className="text-muted-foreground whitespace-pre-wrap">
+                    {bug.description}
+                  </p>
                 </div>
 
-                {bug.steps_to_reproduce && (
+                {/*    {bug.steps_to_reproduce && (
                   <div>
                     <h4 className="font-medium text-card-foreground mb-2">Pasos para Reproducir</h4>
                     <p className="text-muted-foreground whitespace-pre-wrap">{bug.steps_to_reproduce}</p>
@@ -244,31 +291,51 @@ export default async function BugPage({ params }: BugPageProps) {
                     <h4 className="font-medium text-card-foreground mb-2">Comportamiento Actual</h4>
                     <p className="text-muted-foreground whitespace-pre-wrap">{bug.actual_behavior}</p>
                   </div>
-                )}
+                )} */}
 
                 <div className="grid grid-cols-2 gap-4 text-sm pt-4 border-t border-border">
                   <div>
-                    <span className="font-medium text-card-foreground">Reportado por:</span>
-                    <p className="text-muted-foreground">{bug.users?.full_name || "Desconocido"}</p>
+                    <span className="font-medium text-card-foreground">
+                      Reportado por:
+                    </span>
+                    <p className="text-muted-foreground">
+                      {bug.users?.full_name || "Desconocido"}
+                    </p>
                   </div>
                   <div>
-                    <span className="font-medium text-card-foreground">Asignado a:</span>
-                    <p className="text-muted-foreground">{bug.assigned_user?.full_name || "Sin asignar"}</p>
+                    <span className="font-medium text-card-foreground">
+                      Asignado a:
+                    </span>
+                    <p className="text-muted-foreground">
+                      {bug.assigned_user?.full_name || "Sin asignar"}
+                    </p>
                   </div>
                   <div>
-                    <span className="font-medium text-card-foreground">Fecha de reporte:</span>
-                    <p className="text-muted-foreground">{new Date(bug.created_at).toLocaleDateString("es-ES")}</p>
+                    <span className="font-medium text-card-foreground">
+                      Fecha de reporte:
+                    </span>
+                    <p className="text-muted-foreground">
+                      {new Date(bug.created_at).toLocaleDateString("es-ES")}
+                    </p>
                   </div>
                   {bug.resolved_at && (
                     <div>
-                      <span className="font-medium text-card-foreground">Fecha de resolución:</span>
-                      <p className="text-muted-foreground">{new Date(bug.resolved_at).toLocaleDateString("es-ES")}</p>
+                      <span className="font-medium text-card-foreground">
+                        Fecha de resolución:
+                      </span>
+                      <p className="text-muted-foreground">
+                        {new Date(bug.resolved_at).toLocaleDateString("es-ES")}
+                      </p>
                     </div>
                   )}
                   {bug.test_cases && (
                     <div className="col-span-2">
-                      <span className="font-medium text-card-foreground">Caso de prueba relacionado:</span>
-                      <p className="text-muted-foreground">{bug.test_cases.title}</p>
+                      <span className="font-medium text-card-foreground">
+                        Caso de prueba relacionado:
+                      </span>
+                      <p className="text-muted-foreground">
+                        {bug.test_cases.title}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -296,16 +363,27 @@ export default async function BugPage({ params }: BugPageProps) {
             {/* History */}
             <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-card-foreground">Historial de Cambios</CardTitle>
-                <CardDescription className="text-muted-foreground">Últimos cambios realizados</CardDescription>
+                <CardTitle className="text-card-foreground">
+                  Historial de Cambios
+                </CardTitle>
+                <CardDescription className="text-muted-foreground">
+                  Últimos cambios realizados
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 {history && history.length > 0 ? (
                   <div className="space-y-3">
                     {history.map((change) => (
-                      <div key={change.id} className="text-sm border-l-2 border-primary pl-3">
-                        <p className="font-medium text-card-foreground">{change.field_name}</p>
-                        <p className="text-muted-foreground text-xs">por {change.users?.full_name || "Desconocido"}</p>
+                      <div
+                        key={change.id}
+                        className="text-sm border-l-2 border-primary pl-3"
+                      >
+                        <p className="font-medium text-card-foreground">
+                          {change.field_name}
+                        </p>
+                        <p className="text-muted-foreground text-xs">
+                          por {change.users?.full_name || "Desconocido"}
+                        </p>
                         <p className="text-muted-foreground text-xs">
                           {new Date(change.changed_at).toLocaleString("es-ES")}
                         </p>
@@ -329,7 +407,9 @@ export default async function BugPage({ params }: BugPageProps) {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-muted-foreground text-center py-4">Sin cambios registrados</p>
+                  <p className="text-muted-foreground text-center py-4">
+                    Sin cambios registrados
+                  </p>
                 )}
               </CardContent>
             </Card>
@@ -337,5 +417,5 @@ export default async function BugPage({ params }: BugPageProps) {
         </div>
       </main>
     </div>
-  )
+  );
 }

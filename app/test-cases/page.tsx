@@ -1,139 +1,30 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+"use client";
+
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardContent,
-  CardDescription,
   CardHeader,
+  CardContent,
   CardTitle,
+  CardDescription,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-
-interface TestCasesPageProps {
-  searchParams: Promise<{ project?: string; status?: string }>;
-}
+import { TestCasesPageProps } from "./type";
+import useTestCasesPage from "./useTestCases";
 
 export default async function TestCasesPage({
   searchParams,
 }: TestCasesPageProps) {
-  const { project: selectedProjectId, status: filterStatus } =
-    await searchParams;
-  const supabase = await createClient();
-
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data?.user) {
-    redirect("/auth/login");
-  }
-
-  // Get user's projects
-  const { data: userProjects } = await supabase
-    .from("project_members")
-    .select(
-      `
-      project_id,
-      projects (
-        id,
-        name
-      )
-    `
-    )
-    .eq("user_id", data.user.id);
-
-  const projects: Project[] =
-    userProjects
-      ?.map((up) => {
-        const proj = up.projects;
-        if (Array.isArray(proj)) {
-          return proj[0] as Project;
-        }
-        return proj as Project;
-      })
-      .filter((p): p is Project => !!p) || [];
-
-  if (!selectedProjectId && projects.length === 0) {
-    return (
-      <div className="min-h-screen bg-background">
-        <header className="border-b border-border bg-card">
-          <div className="container mx-auto px-4 py-4">
-            <h1 className="text-2xl font-bold text-card-foreground">
-              Casos de Prueba
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              No tienes proyectos asignados
-            </p>
-          </div>
-        </header>
-        <main className="container mx-auto px-4 py-8">
-          <div className="text-center">
-            <p className="text-muted-foreground mb-4">
-              Necesitas estar asignado a un proyecto para ver casos de prueba.
-            </p>
-            <Button asChild>
-              <Link href="/projects">Ver Proyectos</Link>
-            </Button>
-          </div>
-        </main>
-      </div>
-    );
-  }
-
-  if (!selectedProjectId && projects.length > 0) {
-    redirect(`/test-cases?project=${projects[0].id}`);
-  }
-
-  // Get test cases for selected project + status filter
-  let query = supabase
-    .from("test_cases")
-    .select(
-      `
-      *,
-      users!test_cases_created_by_fkey (
-        full_name
-      )
-    `
-    )
-    .eq("project_id", selectedProjectId)
-    .order("created_at", { ascending: false });
-
-  if (filterStatus && filterStatus !== "all") {
-    query = query.eq("status", filterStatus);
-  }
-
-  const { data: testCases } = await query;
-
-  const currentProject = projects.find((p) => p.id === selectedProjectId);
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "active":
-        return "bg-green-100 text-green-800 border-green-200";
-      case "draft":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "deprecated":
-        return "bg-red-100 text-red-800 border-red-200";
-      case "closed":
-        return "bg-gray-300 text-gray-800 border-gray-400";
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200";
-    }
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "critical":
-        return "bg-red-100 text-red-800 border-red-200";
-      case "high":
-        return "bg-orange-100 text-orange-800 border-orange-200";
-      case "medium":
-        return "bg-blue-100 text-blue-800 border-blue-200";
-      case "low":
-        return "bg-gray-100 text-gray-800 border-gray-200";
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200";
-    }
-  };
+  const {
+    projects,
+    testCases,
+    currentProject,
+    selectedProjectId,
+    filterStatus,
+    getStatusColor,
+    getPriorityColor,
+  } = await useTestCasesPage(searchParams);
 
   return (
     <div className="min-h-screen bg-background">

@@ -23,138 +23,39 @@ import {
 } from "@/components/ui/select";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useNewTestCase } from "./useNewTestCase";
 
 type Step = { action: string; expected: string };
 type Project = { id: string; name: string };
 
 export default function NewTestCasePage() {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [preconditions, setPreconditions] = useState("");
-  const [steps, setSteps] = useState<Step[]>([{ action: "", expected: "" }]);
-  const [status, setStatus] = useState("draft");
-  const [priority, setPriority] = useState("medium");
-  const [month, setMonth] = useState(""); 
-  const [sprint, setSprint] = useState(""); 
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProject, setSelectedProject] = useState("");
-
-  const [storyId, setStoryId] = useState<number | null>(null);
-  const [caseNumber, setCaseNumber] = useState<number | null>(null);
-
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const projectFromUrl = searchParams.get("project");
-
-  useEffect(() => {
-    const loadProjects = async () => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user) {
-        const { data: userProjects } = await supabase
-          .from("project_members")
-          .select(
-            `
-            project_id,
-            projects (
-              id,
-              name
-            )
-          `
-          )
-          .eq("user_id", user.id);
-
-        const projectsList: Project[] =
-          userProjects
-            ?.map((up) => {
-              const proj = up.projects as Project | Project[];
-              return Array.isArray(proj) ? proj[0] : proj;
-            })
-            .filter((p): p is Project => !!p) || [];
-
-        setProjects(projectsList);
-
-        if (
-          projectFromUrl &&
-          projectsList.find((p) => p.id === projectFromUrl)
-        ) {
-          setSelectedProject(projectFromUrl);
-        } else if (projectsList.length > 0) {
-          setSelectedProject(projectsList[0].id);
-        }
-      }
-    };
-
-    loadProjects();
-  }, [projectFromUrl]);
-
-  const addStep = () => {
-    setSteps([...steps, { action: "", expected: "" }]);
-  };
-
-  const updateStep = (
-    index: number,
-    field: "action" | "expected",
-    value: string
-  ) => {
-    const newSteps = [...steps];
-    newSteps[index][field] = value;
-    setSteps(newSteps);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const supabase = createClient();
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Usuario no autenticado");
-
-      if (!selectedProject) throw new Error("Debe seleccionar un proyecto");
-
-      const { data: testCase, error: testCaseError } = await supabase
-        .from("test_cases")
-        .insert({
-          project_id: selectedProject,
-          title,
-          description,
-          preconditions,
-          steps: JSON.stringify(steps),
-          status,
-          priority,
-          month, // 👈 nuevo campo
-          sprint, // 👈 nuevo campo
-          story_id: storyId,
-          created_by: user.id,
-        })
-        .select()
-        .single();
-
-      if (testCaseError) throw testCaseError;
-
-      setCaseNumber(testCase.case_number);
-
-      router.push(`/test-cases/${testCase.id}`);
-    } catch (error: unknown) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Error al crear el caso de prueba"
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const {
+    title,
+    setTitle,
+    description,
+    setDescription,
+    preconditions,
+    setPreconditions,
+    steps,
+    addStep,
+    updateStep,
+    status,
+    setStatus,
+    priority,
+    setPriority,
+    month,
+    setMonth,
+    sprint,
+    setSprint,
+    error,
+    isLoading,
+    projects,
+    selectedProject,
+    setSelectedProject,
+    storyId,
+    setStoryId,
+    handleSubmit,
+  } = useNewTestCase();
 
   return (
     <div className="min-h-screen bg-background">
@@ -225,7 +126,14 @@ export default function NewTestCasePage() {
                   <Label htmlFor="priority" className="text-card-foreground">
                     Prioridad
                   </Label>
-                  <Select value={priority} onValueChange={setPriority}>
+                  <Select
+                    value={priority}
+                    onValueChange={(value: string) =>
+                      setPriority(
+                        value as "low" | "medium" | "high" | "critical"
+                      )
+                    }
+                  >
                     <SelectTrigger className="bg-input border-border text-foreground">
                       <SelectValue />
                     </SelectTrigger>
@@ -415,7 +323,12 @@ export default function NewTestCasePage() {
                 <Label htmlFor="status" className="text-card-foreground">
                   Estado
                 </Label>
-                <Select value={status} onValueChange={setStatus}>
+                <Select
+                  value={status}
+                  onValueChange={(value: string) =>
+                    setStatus(value as "draft" | "active")
+                  }
+                >
                   <SelectTrigger className="bg-input border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>

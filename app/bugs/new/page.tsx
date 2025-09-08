@@ -1,130 +1,179 @@
-"use client"
+"use client";
 
-import type React from "react"
+import { useState, useEffect, FormEvent } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
-import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
-import { useState, useEffect } from "react"
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+type Project = { id: string; name: string };
+type Member = { id: string; full_name: string; email?: string };
+type TestCase = { id: string; title: string };
 
 export default function NewBugPage() {
-  const [title, setTitle] = useState("")
-  const [description, setDescription] = useState("")
-  const [stepsToReproduce, setStepsToReproduce] = useState("")
-  const [expectedBehavior, setExpectedBehavior] = useState("")
-  const [actualBehavior, setActualBehavior] = useState("")
-  const [priority, setPriority] = useState("medium")
-  const [severity, setSeverity] = useState("minor")
-  const [assignedTo, setAssignedTo] = useState("")
-  const [testCaseId, setTestCaseId] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [projects, setProjects] = useState<any[]>([])
-  const [selectedProject, setSelectedProject] = useState("")
-  const [projectMembers, setProjectMembers] = useState<any[]>([])
-  const [testCases, setTestCases] = useState<any[]>([])
+  // form state
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [stepsToReproduce, setStepsToReproduce] = useState("");
+  const [expectedBehavior, setExpectedBehavior] = useState("");
+  const [actualBehavior, setActualBehavior] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [severity, setSeverity] = useState("minor");
+  const [assignedTo, setAssignedTo] = useState("unassigned");
+  const [testCaseId, setTestCaseId] = useState("");
+  const [bugNumber, setBugNumber] = useState<number | null>(null);
 
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const projectFromUrl = searchParams.get("project")
-  const testCaseFromUrl = searchParams.get("testCase")
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
+  // lists + selection
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState("");
+  const [projectMembers, setProjectMembers] = useState<Member[]>([]);
+  const [testCases, setTestCases] = useState<TestCase[]>([]);
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const projectFromUrl = searchParams.get("project");
+  const testCaseFromUrl = searchParams.get("testCase");
+
+  // Load user's projects
   useEffect(() => {
     const loadData = async () => {
-      const supabase = createClient()
+      const supabase = createClient();
       const {
         data: { user },
-      } = await supabase.auth.getUser()
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
-      if (user) {
-        // Load user's projects
-        const { data: userProjects } = await supabase
-          .from("project_members")
-          .select(`
-            project_id,
-            projects (
-              id,
-              name
-            )
-          `)
-          .eq("user_id", user.id)
+      const { data: userProjects } = await supabase
+        .from("project_members")
+        .select("project_id, projects ( id, name )")
+        .eq("user_id", user.id);
 
-        const projectsList = userProjects?.map((up) => up.projects).filter(Boolean) || []
-        setProjects(projectsList)
+      const projectsList: Project[] = (userProjects ?? []).flatMap((up: any) =>
+        up?.projects
+          ? [{ id: String(up.projects.id), name: String(up.projects.name) }]
+          : []
+      );
 
-        if (projectFromUrl && projectsList.find((p) => p.id === projectFromUrl)) {
-          setSelectedProject(projectFromUrl)
-        } else if (projectsList.length > 0) {
-          setSelectedProject(projectsList[0].id)
-        }
+      setProjects(projectsList);
 
-        if (testCaseFromUrl) {
-          setTestCaseId(testCaseFromUrl)
-        }
-      }
+      const preselected =
+        (projectFromUrl &&
+          projectsList.find((p) => p.id === projectFromUrl)?.id) ||
+        projectsList[0]?.id ||
+        "";
+
+      setSelectedProject(preselected);
+
+      if (testCaseFromUrl) setTestCaseId(testCaseFromUrl);
+    };
+
+    loadData();
+  }, [projectFromUrl, testCaseFromUrl]);
+
+  // Load members, test cases and next bug number
+  useEffect(() => {
+    if (!selectedProject) {
+      setProjectMembers([]);
+      setTestCases([]);
+      setBugNumber(null);
+      return;
     }
 
-    loadData()
-  }, [projectFromUrl, testCaseFromUrl])
-
-  useEffect(() => {
-    if (!selectedProject) return
-
     const loadProjectData = async () => {
-      const supabase = createClient()
+      const supabase = createClient();
 
-      // Load project members
+      // miembros
       const { data: members } = await supabase
         .from("project_members")
-        .select(`
-          users (
-            id,
-            full_name,
-            email
-          )
-        `)
-        .eq("project_id", selectedProject)
+        .select("users ( id, full_name, email )")
+        .eq("project_id", selectedProject);
 
-      setProjectMembers(members?.map((m) => m.users).filter(Boolean) || [])
-
-      // Load test cases
+      const membersList: Member[] = (members ?? []).flatMap((m: any) =>
+        m?.users
+          ? [
+              {
+                id: String(m.users.id),
+                full_name: String(m.users.full_name),
+                email: m.users.email ? String(m.users.email) : undefined,
+              },
+            ]
+          : []
+      );
+      setProjectMembers(membersList);
+      // test cases
       const { data: cases } = await supabase
         .from("test_cases")
         .select("id, title")
+        .eq("project_id", selectedProject);
+
+      const testCasesList: TestCase[] = (cases ?? []).map((c: any) => ({
+        id: String(c.id),
+        title: String(c.title),
+      }));
+
+      setTestCases(testCasesList);
+
+      // numero de bug
+      const { data: lastBug } = await supabase
+        .from("bugs")
+        .select("bug_number")
         .eq("project_id", selectedProject)
-        .eq("status", "active")
+        .order("bug_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      setTestCases(cases || [])
-    }
+      setBugNumber(lastBug ? lastBug.bug_number + 1 : 1);
+    };
 
-    loadProjectData()
-  }, [selectedProject])
+    loadProjectData();
+  }, [selectedProject]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const supabase = createClient()
-    setIsLoading(true)
-    setError(null)
+  // Submit
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
 
     try {
+      const supabase = createClient();
       const {
         data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) throw new Error("Usuario no autenticado")
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+      if (!selectedProject) throw new Error("Debe seleccionar un proyecto");
+      if (!bugNumber) throw new Error("No se pudo generar el número de bug");
 
-      if (!selectedProject) throw new Error("Debe seleccionar un proyecto")
+      const test_case_value =
+        testCaseId === "none" || testCaseId === "" ? null : testCaseId;
+      const assigned_value = assignedTo === "unassigned" ? null : assignedTo;
 
       const { data: bug, error: bugError } = await supabase
         .from("bugs")
         .insert({
           project_id: selectedProject,
-          test_case_id: testCaseId || null,
+          bug_number: bugNumber, // 🚀 número consecutivo
+          test_case_id: test_case_value,
           title,
           description,
           steps_to_reproduce: stepsToReproduce,
@@ -133,31 +182,45 @@ export default function NewBugPage() {
           priority,
           severity,
           reported_by: user.id,
-          assigned_to: assignedTo || null,
+          assigned_to: assigned_value,
         })
         .select()
-        .single()
+        .single();
 
-      if (bugError) throw bugError
+      if (bugError) throw bugError;
 
-      router.push(`/bugs/${bug.id}`)
-    } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "Error al crear el bug")
+      router.push(`/bugs/${bug.id}`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al crear el bug");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-card-foreground">Reportar Bug</h1>
-            <p className="text-sm text-muted-foreground">Crea un nuevo reporte de bug</p>
+            <h1 className="text-2xl font-bold text-card-foreground">
+              Reportar Bug
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Crea un nuevo reporte de bug
+            </p>
           </div>
-          <Button asChild variant="outline" className="border-border bg-transparent">
-            <Link href={`/bugs${selectedProject ? `?project=${selectedProject}` : ""}`}>Cancelar</Link>
+          <Button
+            asChild
+            variant="outline"
+            className="border-border bg-transparent"
+          >
+            <Link
+              href={`/bugs${
+                selectedProject ? `?project=${selectedProject}` : ""
+              }`}
+            >
+              Cancelar
+            </Link>
           </Button>
         </div>
       </header>
@@ -165,19 +228,26 @@ export default function NewBugPage() {
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <Card className="border-border">
           <CardHeader>
-            <CardTitle className="text-card-foreground">Información del Bug</CardTitle>
+            <CardTitle className="text-card-foreground">
+              Información del Bug
+            </CardTitle>
             <CardDescription className="text-muted-foreground">
               Completa los datos para reportar un nuevo bug
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid gap-6 md:grid-cols-2">
+              {/* Proyecto - Caso de prueba - Número de bug */}
+              <div className="grid gap-6 grid-cols-3">
+                {/* Proyecto */}
                 <div className="space-y-2">
                   <Label htmlFor="project" className="text-card-foreground">
                     Proyecto *
                   </Label>
-                  <Select value={selectedProject} onValueChange={setSelectedProject}>
+                  <Select
+                    value={selectedProject}
+                    onValueChange={(v) => setSelectedProject(v)}
+                  >
                     <SelectTrigger className="bg-input border-border text-foreground">
                       <SelectValue placeholder="Selecciona un proyecto" />
                     </SelectTrigger>
@@ -191,26 +261,52 @@ export default function NewBugPage() {
                   </Select>
                 </div>
 
+                {/* Caso de prueba */}
                 <div className="space-y-2">
                   <Label htmlFor="testCase" className="text-card-foreground">
                     Caso de Prueba (Opcional)
                   </Label>
-                  <Select value={testCaseId} onValueChange={setTestCaseId}>
+                  <Select
+                    value={testCaseId}
+                    onValueChange={(v) => setTestCaseId(v)}
+                  >
                     <SelectTrigger className="bg-input border-border text-foreground">
                       <SelectValue placeholder="Selecciona un caso de prueba" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Ninguno</SelectItem>
-                      {testCases.map((testCase) => (
-                        <SelectItem key={testCase.id} value={testCase.id}>
-                          {testCase.title}
-                        </SelectItem>
-                      ))}
+                      {testCases.length === 0 ? (
+                        <div className="px-2 py-1 text-sm text-muted-foreground">
+                          No hay casos de prueba en este proyecto
+                        </div>
+                      ) : (
+                        testCases.map((testCase) => (
+                          <SelectItem key={testCase.id} value={testCase.id}>
+                            {testCase.title}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Número de bug */}
+                <div className="space-y-2">
+                  <Label htmlFor="bugNumber" className="text-card-foreground">
+                    Número de Bug
+                  </Label>
+                  <Input
+                    id="bugNumber"
+                    type="text"
+                    value={bugNumber ?? ""}
+                    readOnly
+                    className="bg-muted text-foreground"
+                    disabled
+                  />
+                </div>
               </div>
 
+              {/* Título */}
               <div className="space-y-2">
                 <Label htmlFor="title" className="text-card-foreground">
                   Título *
@@ -226,6 +322,7 @@ export default function NewBugPage() {
                 />
               </div>
 
+              {/* Descripción */}
               <div className="space-y-2">
                 <Label htmlFor="description" className="text-card-foreground">
                   Descripción *
@@ -240,12 +337,17 @@ export default function NewBugPage() {
                 />
               </div>
 
-              <div className="grid gap-6 md:grid-cols-3">
+              {/* Prioridad - Severidad - Asignar a */}
+              <div className="grid gap-6 grid-cols-3">
+                {/* Prioridad */}
                 <div className="space-y-2">
                   <Label htmlFor="priority" className="text-card-foreground">
                     Prioridad
                   </Label>
-                  <Select value={priority} onValueChange={setPriority}>
+                  <Select
+                    value={priority}
+                    onValueChange={(v) => setPriority(v)}
+                  >
                     <SelectTrigger className="bg-input border-border text-foreground">
                       <SelectValue />
                     </SelectTrigger>
@@ -258,11 +360,15 @@ export default function NewBugPage() {
                   </Select>
                 </div>
 
+                {/* Severidad */}
                 <div className="space-y-2">
                   <Label htmlFor="severity" className="text-card-foreground">
                     Severidad
                   </Label>
-                  <Select value={severity} onValueChange={setSeverity}>
+                  <Select
+                    value={severity}
+                    onValueChange={(v) => setSeverity(v)}
+                  >
                     <SelectTrigger className="bg-input border-border text-foreground">
                       <SelectValue />
                     </SelectTrigger>
@@ -275,11 +381,15 @@ export default function NewBugPage() {
                   </Select>
                 </div>
 
+                {/* Asignar a */}
                 <div className="space-y-2">
                   <Label htmlFor="assignedTo" className="text-card-foreground">
                     Asignar a
                   </Label>
-                  <Select value={assignedTo} onValueChange={setAssignedTo}>
+                  <Select
+                    value={assignedTo}
+                    onValueChange={(v) => setAssignedTo(v)}
+                  >
                     <SelectTrigger className="bg-input border-border text-foreground">
                       <SelectValue placeholder="Sin asignar" />
                     </SelectTrigger>
@@ -295,22 +405,32 @@ export default function NewBugPage() {
                 </div>
               </div>
 
+              {/* Pasos para reproducir */}
               <div className="space-y-2">
-                <Label htmlFor="stepsToReproduce" className="text-card-foreground">
+                <Label
+                  htmlFor="stepsToReproduce"
+                  className="text-card-foreground"
+                >
                   Pasos para Reproducir
                 </Label>
                 <Textarea
                   id="stepsToReproduce"
-                  placeholder="1. Ir a la página de login&#10;2. Ingresar email válido&#10;3. Ingresar contraseña válida&#10;4. Hacer clic en 'Iniciar Sesión'"
+                  placeholder={
+                    "1. Ir a la página de login\n2. Ingresar email válido\n3. Ingresar contraseña válida\n4. Hacer clic en 'Iniciar Sesión'"
+                  }
                   value={stepsToReproduce}
                   onChange={(e) => setStepsToReproduce(e.target.value)}
                   className="bg-input border-border text-foreground min-h-[100px]"
                 />
               </div>
 
+              {/* Comportamiento esperado y actual */}
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="expectedBehavior" className="text-card-foreground">
+                  <Label
+                    htmlFor="expectedBehavior"
+                    className="text-card-foreground"
+                  >
                     Comportamiento Esperado
                   </Label>
                   <Textarea
@@ -323,7 +443,10 @@ export default function NewBugPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="actualBehavior" className="text-card-foreground">
+                  <Label
+                    htmlFor="actualBehavior"
+                    className="text-card-foreground"
+                  >
                     Comportamiento Actual
                   </Label>
                   <Textarea
@@ -338,6 +461,7 @@ export default function NewBugPage() {
 
               {error && <p className="text-sm text-destructive">{error}</p>}
 
+              {/* Botones */}
               <div className="flex gap-4">
                 <Button
                   type="submit"
@@ -346,8 +470,18 @@ export default function NewBugPage() {
                 >
                   {isLoading ? "Creando..." : "Reportar Bug"}
                 </Button>
-                <Button asChild variant="outline" className="flex-1 border-border bg-transparent">
-                  <Link href={`/bugs${selectedProject ? `?project=${selectedProject}` : ""}`}>Cancelar</Link>
+                <Button
+                  asChild
+                  variant="outline"
+                  className="flex-1 border-border bg-transparent"
+                >
+                  <Link
+                    href={`/bugs${
+                      selectedProject ? `?project=${selectedProject}` : ""
+                    }`}
+                  >
+                    Cancelar
+                  </Link>
                 </Button>
               </div>
             </form>
@@ -355,5 +489,5 @@ export default function NewBugPage() {
         </Card>
       </main>
     </div>
-  )
+  );
 }

@@ -1,13 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardContent,
   CardHeader,
+  CardContent,
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
@@ -16,200 +13,48 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
-  SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectContent,
+  SelectItem,
 } from "@/components/ui/select";
 import { Trash2 } from "lucide-react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useEditTestCase } from "./useEditTestCase";
 
-type Step = { action: string; expected: string };
-
-const supabase = createClient();
-
-export default function EditTestCasePage() {
+export default function EditTestCasePageUI() {
   const params = useParams();
-  const router = useRouter();
   const testCaseId = params.id;
 
-  // Estados
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [preconditions, setPreconditions] = useState("");
-  const [steps, setSteps] = useState<Step[]>([{ action: "", expected: "" }]);
-  const [expectedResult, setExpectedResult] = useState("");
-  const [status, setStatus] = useState("draft");
-  const [priority, setPriority] = useState("medium");
-  const [month, setMonth] = useState("");
-  const [sprint, setSprint] = useState("");
-  const [storyId, setStoryId] = useState<number | null>(null);
-  const [projectId, setProjectId] = useState("");
-  const [caseNumber, setCaseNumber] = useState<number | null>(null);
-  const [createdBy, setCreatedBy] = useState("");
-  const [createdAt, setCreatedAt] = useState("");
-  const [updatedAt, setUpdatedAt] = useState("");
-
-  const [projectOptions, setProjectOptions] = useState<
-    { id: string; name: string }[]
-  >([]);
-  const [priorityOptions, setPriorityOptions] = useState<
-    { priority_value: string }[]
-  >([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Cargar datos iniciales
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-
-      // 1. Proyectos
-      const { data: projectsData, error: projectsError } = await supabase
-        .from("projects")
-        .select("id, name");
-      if (!projectsError && projectsData) setProjectOptions(projectsData);
-
-      // 2. Prioridades
-      const { data: prioritiesData, error: prioritiesError } =
-        await supabase.rpc("get_bug_priority");
-      if (!prioritiesError && prioritiesData)
-        setPriorityOptions(prioritiesData);
-
-      // 3. Test case
-      const { data: testCase, error: testCaseError } = await supabase
-        .from("test_cases")
-        .select("*")
-        .eq("id", testCaseId)
-        .single();
-
-      if (testCaseError || !testCase) {
-        console.error("Error fetching test case:", testCaseError);
-        setIsLoading(false);
-        return;
-      }
-
-      // Asignar valores a estados
-      setTitle(testCase.title || "");
-      setDescription(testCase.description || "");
-      setPreconditions(testCase.preconditions || "");
-      setSteps(
-        testCase.steps
-          ? JSON.parse(testCase.steps)
-          : [{ action: "", expected: "" }]
-      );
-      setExpectedResult(testCase.expected_result || "");
-      setStatus(testCase.status || "draft");
-      setPriority(testCase.priority || "medium");
-      setMonth(testCase.month || "");
-      setSprint(testCase.sprint || "");
-      setStoryId(testCase.story_id ?? null);
-      setProjectId(testCase.project_id || "");
-      setCaseNumber(testCase.case_number ?? null);
-      setCreatedBy(testCase.users?.name || "");
-      setCreatedAt(testCase.created_at || "");
-      setUpdatedAt(testCase.updated_at || "");
-
-      setIsLoading(false);
-    };
-
-    fetchData();
-  }, [testCaseId]);
-
-  // Funciones para steps
-  const addStep = () => setSteps([...steps, { action: "", expected: "" }]);
-  const updateStep = (
-    index: number,
-    field: "action" | "expected",
-    value: string
-  ) => {
-    const newSteps = [...steps];
-    newSteps[index][field] = value;
-    setSteps(newSteps);
-  };
-
-  // Guardar cambios
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!testCaseId) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Obtener usuario actual
-      const { data: authData } = await supabase.auth.getUser();
-      const user = authData?.user;
-      if (!user) throw new Error("Usuario no autenticado");
-
-      // Obtener test case actual
-      const { data: oldTestCase, error: oldError } = await supabase
-        .from("test_cases")
-        .select("*")
-        .eq("id", testCaseId)
-        .single();
-      if (oldError || !oldTestCase)
-        throw new Error("No se encontró el test case");
-
-      // Valores actuales
-      const currentValues = {
-        project_id: projectId,
-        title,
-        description,
-        preconditions,
-        steps: JSON.stringify(steps),
-        expected_result: expectedResult,
-        status,
-        priority,
-        month,
-        sprint,
-        story_id: storyId,
-      };
-
-      // Actualizar test case
-      const { error: updateError } = await supabase
-        .from("test_cases")
-        .update(currentValues)
-        .eq("id", testCaseId);
-      if (updateError) throw updateError;
-
-      const fieldsToCheck = Object.keys(
-        currentValues
-      ) as (keyof typeof currentValues)[];
-
-      const historyInserts = fieldsToCheck
-        .filter((field) => {
-          const oldValue = oldTestCase[field];
-          const newValue = currentValues[field];
-          return oldValue !== newValue;
-        })
-        .map((field) => ({
-          test_case_id: testCaseId,
-          field_name: field,
-          old_value: oldTestCase[field],
-          new_value: currentValues[field],
-          changed_by: user.id,
-        }));
-
-      if (historyInserts.length > 0) {
-        const { data, error: historyError } = await supabase
-          .from("test_case_history")
-          .insert(historyInserts);
-
-        if (historyError) {
-          console.error("Error guardando historial:", historyError);
-        } else {
-          console.log("Historial guardado:", data);
-        }
-      }
-
-      router.push(`/test-cases/${testCaseId}`);
-    } catch (err: any) {
-      setError(err.message || "Error al actualizar");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const {
+    title,
+    setTitle,
+    description,
+    setDescription,
+    preconditions,
+    setPreconditions,
+    steps,
+    addStep,
+    updateStep,
+    status,
+    setStatus,
+    priority,
+    setPriority,
+    month,
+    setMonth,
+    sprint,
+    setSprint,
+    storyId,
+    setStoryId,
+    projectId,
+    caseNumber,
+    projectOptions,
+    isLoading,
+    error,
+    handleUpdate,
+    setSteps,
+  } = useEditTestCase(testCaseId);
 
   if (isLoading) return <p>Cargando...</p>;
 
@@ -220,27 +65,21 @@ export default function EditTestCasePage() {
           <h1 className="text-2xl font-bold text-card-foreground">
             Editar Caso de Prueba
           </h1>
-          <Button
-            asChild
-            variant="outline"
-            className="border-border bg-transparent"
-          >
+          <Button asChild variant="outline">
             <Link href={`/test-cases`}>Cancelar</Link>
           </Button>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-5xl">
-        <Card className="border-border">
+        {/* Formulario */}
+        <Card>
           <CardHeader>
-            <CardTitle className="text-card-foreground">
-              Información del Caso de Prueba
-            </CardTitle>
-            <CardDescription className="text-muted-foreground">
-              Edita los datos del caso de prueba seleccionado
+            <CardTitle>Información del Caso de Prueba</CardTitle>
+            <CardDescription>
+              Edita los datos del caso de prueba
             </CardDescription>
           </CardHeader>
-
           <CardContent>
             <form onSubmit={handleUpdate} className="space-y-6">
               <div className="grid grid-cols-4 gap-4">
@@ -424,7 +263,12 @@ export default function EditTestCasePage() {
               {/* Estado */}
               <div className="space-y-2">
                 <Label>Estado</Label>
-                <Select value={status} onValueChange={setStatus}>
+                <Select
+                  value={status}
+                  onValueChange={(value) =>
+                    setStatus(value as "draft" | "active")
+                  }
+                >
                   <SelectTrigger className="bg-input border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>
@@ -433,6 +277,7 @@ export default function EditTestCasePage() {
                     <SelectItem value="active">Activo</SelectItem>
                   </SelectContent>
                 </Select>
+
                 {/* Botón de actualizar */}
                 <Button type="submit">
                   {isLoading ? "Actualizando..." : "Actualizar Caso de Prueba"}
